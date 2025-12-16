@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SkinCheck • Demo</title>
+  <meta name="description" content="Upload a lesion photo and get a demo prediction from a Hugging Face model." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="bg-blur"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">SC</div>
+      <div class="brand-text">
+        <div class="title">SkinCheck</div>
+        <div class="subtitle">Fast demo prediction • Not medical advice</div>
+      </div>
+    </div>
+    <button id="themeBtn" class="icon-btn" aria-label="Toggle theme" title="Toggle theme">
+      <span class="icon">☾</span>
+    </button>
+  </header>
+
+  <main class="container">
+    <!-- Upload Card -->
+    <section class="card upload-card">
+      <div class="card-head">
+        <h2>Upload a photo</h2>
+        <p>Best results when the lesion is centered, in focus, and well lit.</p>
+      </div>
+
+      <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload image">
+        <div class="dz-inner">
+          <div class="dz-badge">Tip</div>
+          <div class="dz-title">Tap to choose an image</div>
+          <div class="dz-sub">or drag & drop • JPG/PNG • up to ~8MB</div>
+          <div class="dz-actions">
+            <label class="btn primary">
+              <input id="fileInput" type="file" accept="image/*" capture="environment" hidden />
+              Choose / Camera
+            </label>
+            <button id="clearBtn" class="btn ghost" disabled>Clear</button>
+          </div>
+        </div>
+
+        <div class="preview-wrap">
+          <img id="preview" class="preview" alt="Selected image preview" />
+          <div id="fileMeta" class="file-meta"></div>
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button id="analyzeBtn" class="btn glow" disabled>
+          <span id="analyzeText">Analyze</span>
+          <span id="spinner" class="spinner" aria-hidden="true"></span>
+        </button>
+        <button id="demoBtn" class="btn ghost">Try demo UI</button>
+      </div>
+
+      <div class="fineprint">
+        This is an educational demo. If you’re worried about a lesion, contact a licensed clinician.
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="card results-card" id="resultsCard" hidden>
+      <div class="results-head">
+        <h2>Result</h2>
+        <div class="pill" id="statusPill">—</div>
+      </div>
+
+      <div class="grid">
+        <!-- Gauge -->
+        <div class="panel gauge-panel">
+          <div class="panel-title">Risk score</div>
+          <div class="gauge">
+            <svg viewBox="0 0 120 120" class="ring" aria-label="Risk gauge">
+              <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
+              <circle class="ring-fg" cx="60" cy="60" r="46"></circle>
+            </svg>
+            <div class="gauge-text">
+              <div class="score" id="scorePct">—%</div>
+              <div class="score-sub">probability</div>
+            </div>
+          </div>
+          <div class="mini">
+            <div class="mini-row">
+              <span>Threshold</span>
+              <span id="thresholdVal">—</span>
+            </div>
+            <div class="mini-row">
+              <span>Model label</span>
+              <span id="modelLabel">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="panel summary-panel">
+          <div class="panel-title">What this means</div>
+          <div id="summaryTitle" class="summary-title">—</div>
+          <p id="summaryText" class="summary-text">—</p>
+
+          <div class="chips" id="chips"></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="panel rec-panel">
+          <div class="panel-title">Recommendations</div>
+          <ul id="recs" class="recs"></ul>
+          <div class="divider"></div>
+          <details class="raw">
+            <summary>Show raw JSON</summary>
+            <pre id="rawJson" class="code"></pre>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Safety -->
+    <section class="card safety-card">
+      <h2>Safety note</h2>
+      <p>
+        This app can be wrong. Lighting, focus, angle, and image framing can change predictions.
+        If a spot is new, changing, bleeding, painful, or looks unusual to you—seek professional care.
+      </p>
+
+      <div class="safety-list">
+        <div class="safety-item">
+          <div class="dot"></div>
+          <div><b>Retake photo</b> in bright indirect light, no flash glare, keep lesion centered.</div>
+        </div>
+        <div class="safety-item">
+          <div class="dot"></div>
+          <div><b>Track changes</b> (size, color, border) and compare over time.</div>
+        </div>
+        <div class="safety-item">
+          <div class="dot"></div>
+          <div><b>When unsure</b>, consult a dermatologist.</div>
+        </div>
+      </div>
+      
+    </section>
+    
+
+    <footer class="footer">
+      <span>Made for demo purposes</span>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
