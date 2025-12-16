@@ -1,30 +1,22 @@
-// app.js (ES module)
-// IMPORTANT: in index.html use: <script type="module" src="app.js"></script>
-
 import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
 
 // ========================================
 // CONFIG
 // ========================================
-// Your Hugging Face Space ID (username/space_name):
 const SPACE_ID = "ElGatito12/ham10000-efficientnet-b0-binary";
-
-// Your Gradio api_name in app.py was: api_name="predict"
-// That maps to endpoint path "/predict"
 const GRADIO_ENDPOINT = "/predict";
 
-// Client-side file limit to keep things snappy (upload size, not model quality)
+// upload limits / performance
 const MAX_MB = 8;
-
-// Optional: downscale big images in-browser before upload (faster, still good quality)
 const ENABLE_DOWNSCALE = true;
-const DOWNSCALE_MAX_DIM = 1400; // px, max width/height
+const DOWNSCALE_MAX_DIM = 1400;
 const DOWNSCALE_JPEG_QUALITY = 0.9;
 
 // ========================================
 // DOM
 // ========================================
-const fileInput = document.getElementById("fileInput");
+const galleryInput = document.getElementById("galleryInput");
+const cameraInput = document.getElementById("cameraInput");
 const dropzone = document.getElementById("dropzone");
 const previewWrap = dropzone.querySelector(".preview-wrap");
 const preview = document.getElementById("preview");
@@ -46,7 +38,6 @@ const summaryText = document.getElementById("summaryText");
 const chips = document.getElementById("chips");
 const recs = document.getElementById("recs");
 const rawJson = document.getElementById("rawJson");
-
 const ring = document.querySelector(".ring-fg");
 
 const themeBtn = document.getElementById("themeBtn");
@@ -55,9 +46,9 @@ const themeIcon = themeBtn.querySelector(".icon");
 // ========================================
 // STATE
 // ========================================
-let currentFile = null;          // File user selected
-let currentUploadFile = null;    // File we actually send (maybe downscaled)
-let gradioClientPromise = null;  // cached connect promise
+let currentFile = null;
+let uploadFile = null;
+let clientPromise = null;
 
 // ========================================
 // THEME
@@ -87,12 +78,30 @@ function bytesToMB(bytes) {
 function setLoading(isLoading) {
   spinner.style.display = isLoading ? "inline-block" : "none";
   analyzeText.textContent = isLoading ? "Analyzing…" : "Analyze";
-  analyzeBtn.disabled = isLoading || !currentUploadFile;
+  analyzeBtn.disabled = isLoading || !uploadFile;
   clearBtn.disabled = isLoading || !currentFile;
 }
 
+function showPreview(file) {
+  preview.src = URL.createObjectURL(file);
+  previewWrap.style.display = "block";
+  fileMeta.textContent = `${file.name} • ${bytesToMB(file.size)} MB`;
+  clearBtn.disabled = false;
+}
+
+function resetAll() {
+  currentFile = null;
+  uploadFile = null;
+  galleryInput.value = "";
+  cameraInput.value = "";
+  previewWrap.style.display = "none";
+  clearBtn.disabled = true;
+  analyzeBtn.disabled = true;
+  resultsCard.hidden = true;
+}
+
 function setRing(percent) {
-  const C = 289; // matches CSS
+  const C = 289;
   const p = Math.max(0, Math.min(100, percent));
   const offset = C - (C * p / 100);
   ring.style.strokeDasharray = `${C}`;
@@ -107,58 +116,6 @@ function riskBand(prob) {
   return { name: "Very high", colorVar: "--bad" };
 }
 
-function buildRecommendations(prob, label) {
-  const band = riskBand(prob).name;
-
-  const base = [
-    { b: "Photo quality matters:", t: "Retake in bright indirect light, keep the lesion centered, avoid flash glare." },
-    { b: "If concerned:", t: "Contact a licensed clinician—especially for new, changing, bleeding, or painful lesions." },
-  ];
-
-  if (label === "malignant-ish") {
-    return [
-      { b: "Don’t ignore it:", t: "This result suggests higher risk. Consider booking a dermatology appointment soon." },
-      { b: "Track changes:", t: "Monitor size/color/border changes and take consistent photos weekly." },
-      ...base,
-      { b: "Risk band:", t: `${band} (based on model probability).` },
-    ];
-  }
-
-  return [
-    { b: "Likely lower risk:", t: "This looks low risk per the model, but false negatives are possible." },
-    { b: "Keep an eye on it:", t: "If it changes or worries you, get professional evaluation." },
-    ...base,
-    { b: "Risk band:", t: `${band} (based on model probability).` },
-  ];
-}
-
-function buildChips(prob, threshold) {
-  const band = riskBand(prob).name;
-  const pct = Math.round(prob * 100);
-  return [
-    `Risk: ${band}`,
-    `Score: ${pct}%`,
-    `Threshold: ${threshold}`,
-  ];
-}
-
-function showPreview(file) {
-  preview.src = URL.createObjectURL(file);
-  previewWrap.style.display = "block";
-  fileMeta.textContent = `${file.name} • ${bytesToMB(file.size)} MB`;
-  clearBtn.disabled = false;
-}
-
-function resetAll() {
-  currentFile = null;
-  currentUploadFile = null;
-  fileInput.value = "";
-  previewWrap.style.display = "none";
-  clearBtn.disabled = true;
-  analyzeBtn.disabled = true;
-  resultsCard.hidden = true;
-}
-
 function pickRingColor(prob) {
   const band = riskBand(prob);
   const color = getComputedStyle(document.body).getPropertyValue(band.colorVar).trim();
@@ -167,13 +124,42 @@ function pickRingColor(prob) {
   statusPill.style.color = color;
 }
 
+function buildChips(prob, threshold) {
+  const band = riskBand(prob).name;
+  const pct = Math.round(prob * 100);
+  return [`Risk: ${band}`, `Score: ${pct}%`, `Threshold: ${threshold}`];
+}
+
+function buildRecommendations(prob, label) {
+  const band = riskBand(prob).name;
+  const base = [
+    { b: "Photo quality matters:", t: "Retake in bright indirect light, keep lesion centered, avoid flash glare." },
+    { b: "If concerned:", t: "Contact a licensed clinician—especially for new, changing, bleeding, or painful lesions." },
+  ];
+
+  if (label === "malignant-ish") {
+    return [
+      { b: "Higher-risk signal:", t: "Consider booking a dermatology appointment soon." },
+      { b: "Track changes:", t: "Monitor size/color/border changes and take consistent photos over time." },
+      ...base,
+      { b: "Risk band:", t: `${band} (based on model probability).` },
+    ];
+  }
+
+  return [
+    { b: "Lower-risk signal:", t: "This looks low risk per the model, but false negatives are possible." },
+    { b: "Keep an eye on it:", t: "If it changes or worries you, seek professional evaluation." },
+    ...base,
+    { b: "Risk band:", t: `${band} (based on model probability).` },
+  ];
+}
+
 // ========================================
-// OPTIONAL DOWNSCALE (returns File)
+// DOWNSCALE (optional)
 // ========================================
 async function maybeDownscale(file) {
   if (!ENABLE_DOWNSCALE) return file;
 
-  // Load image into <img>
   const img = await new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const im = new Image();
@@ -190,14 +176,12 @@ async function maybeDownscale(file) {
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(w * scale);
   canvas.height = Math.round(h * scale);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
 
   const blob = await new Promise((resolve) => {
     canvas.toBlob(resolve, "image/jpeg", DOWNSCALE_JPEG_QUALITY);
   });
 
-  // Keep a sensible name
   const newName = file.name.replace(/\.\w+$/, "") + "_scaled.jpg";
   return new File([blob], newName, { type: "image/jpeg" });
 }
@@ -206,30 +190,20 @@ async function maybeDownscale(file) {
 // GRADIO CLIENT
 // ========================================
 function getClient() {
-  if (!gradioClientPromise) {
-    gradioClientPromise = Client.connect(SPACE_ID);
-  }
-  return gradioClientPromise;
+  if (!clientPromise) clientPromise = Client.connect(SPACE_ID);
+  return clientPromise;
 }
 
-async function callPredictApi(fileToSend) {
+async function callPredict(fileToSend) {
   const client = await getClient();
-
-  // Gradio will handle upload + call internally
   const result = await client.predict(GRADIO_ENDPOINT, [fileToSend]);
-
-  // result.data is typically an array of outputs
-  // Your output is JSON -> usually result.data[0] is the object
-  const output = Array.isArray(result?.data) ? result.data[0] : result;
-  return output;
+  return Array.isArray(result?.data) ? result.data[0] : result;
 }
 
 // ========================================
-// RESULT RENDERING
+// RENDER RESULT
 // ========================================
 function paintResult(output) {
-  // Expected:
-  // { label: "benign-ish"/"malignant-ish", prob_malignant: 0.123, threshold: 0.2, note: ... }
   const label = output?.label ?? "unknown";
   const prob = Number(output?.prob_malignant ?? output?.prob ?? 0);
   const threshold = output?.threshold ?? "—";
@@ -241,17 +215,16 @@ function paintResult(output) {
 
   setRing(pct);
   pickRingColor(prob);
-
   statusPill.textContent = (label === "malignant-ish") ? "Higher risk" : "Lower risk";
 
   if (label === "malignant-ish") {
     summaryTitle.textContent = "Possible higher-risk pattern";
     summaryText.textContent =
-      "The model thinks this image resembles patterns it learned from higher-risk (malignant-ish) examples. This is not a diagnosis—use it as a signal to consider professional evaluation.";
+      "The model thinks this resembles higher-risk examples. This is not a diagnosis—consider professional evaluation.";
   } else {
     summaryTitle.textContent = "Likely lower-risk pattern";
     summaryText.textContent =
-      "The model thinks this image resembles lower-risk (benign-ish) examples. It can still be wrong, especially with blur, glare, or unusual cases—monitor and seek care if concerned.";
+      "The model thinks this resembles lower-risk examples. It can still be wrong—monitor and seek care if concerned.";
   }
 
   chips.innerHTML = "";
@@ -276,7 +249,7 @@ function paintResult(output) {
 }
 
 // ========================================
-// FILE HANDLING
+// INPUT EVENTS
 // ========================================
 async function handleFile(file) {
   if (!file) return;
@@ -288,10 +261,10 @@ async function handleFile(file) {
 
   currentFile = file;
   showPreview(file);
-  setLoading(true);
 
+  setLoading(true);
   try {
-    currentUploadFile = await maybeDownscale(file);
+    uploadFile = await maybeDownscale(file);
     analyzeBtn.disabled = false;
   } catch (e) {
     console.error(e);
@@ -302,12 +275,9 @@ async function handleFile(file) {
   }
 }
 
-// Input change
-fileInput.addEventListener("change", (e) => {
-  handleFile(e.target.files?.[0]);
-});
+galleryInput.addEventListener("change", (e) => handleFile(e.target.files?.[0]));
+cameraInput.addEventListener("change", (e) => handleFile(e.target.files?.[0]));
 
-// Drag-drop
 dropzone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.style.borderColor = "rgba(124,92,255,.65)";
@@ -321,36 +291,32 @@ dropzone.addEventListener("drop", (e) => {
   handleFile(e.dataTransfer.files?.[0]);
 });
 
-// Click dropzone to open file picker (but not when clicking buttons)
 dropzone.addEventListener("click", (e) => {
   if (e.target.closest(".btn")) return;
-  fileInput.click();
+  // default to gallery picker
+  galleryInput.click();
 });
 dropzone.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    fileInput.click();
+    galleryInput.click();
   }
 });
 
-clearBtn.addEventListener("click", () => {
-  resetAll();
-});
+clearBtn.addEventListener("click", () => resetAll());
 
 // ========================================
-// ANALYZE
+// ACTIONS
 // ========================================
 analyzeBtn.addEventListener("click", async () => {
-  if (!currentUploadFile) return;
+  if (!uploadFile) return;
 
   setLoading(true);
-
   try {
-    const output = await callPredictApi(currentUploadFile);
+    const output = await callPredict(uploadFile);
     paintResult(output);
   } catch (err) {
     console.error(err);
-
     alert(
       "Could not reach the prediction API.\n\n" +
       "Common causes:\n" +
@@ -364,22 +330,16 @@ analyzeBtn.addEventListener("click", async () => {
   }
 });
 
-// Demo mode (no API call)
 demoBtn.addEventListener("click", () => {
-  const fake = {
+  paintResult({
     label: "benign-ish",
     prob_malignant: 0.022,
     threshold: 0.20,
     note: "Educational demo. Not medical advice."
-  };
-  paintResult(fake);
+  });
 });
 
-// Optional: warm up the connection early (helps first click feel faster)
+// Optional warmup
 (async function warmup() {
-  try {
-    await getClient();
-  } catch {
-    // ignore; user can still click Analyze later
-  }
+  try { await getClient(); } catch {}
 })();
