@@ -16,7 +16,7 @@
       <div class="logo">SC</div>
       <div class="brand-text">
         <div class="title">SkinCheck</div>
-        <div class="subtitle">Fast demo prediction • Not medical advice</div>
+        <div class="subtitle">Mobile-first demo • Not medical advice</div>
       </div>
     </div>
     <button id="themeBtn" class="icon-btn" aria-label="Toggle theme" title="Toggle theme">
@@ -29,19 +29,28 @@
     <section class="card upload-card">
       <div class="card-head">
         <h2>Upload a photo</h2>
-        <p>Best results when the lesion is centered, in focus, and well lit.</p>
+        <p>For best results: centered lesion, sharp focus, bright indirect light, minimal glare.</p>
       </div>
 
       <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload image">
         <div class="dz-inner">
           <div class="dz-badge">Tip</div>
-          <div class="dz-title">Tap to choose an image</div>
-          <div class="dz-sub">or drag & drop • JPG/PNG • up to ~8MB</div>
+          <div class="dz-title">Choose a photo from Gallery or use Camera</div>
+          <div class="dz-sub">JPG/PNG • Desktop supports drag & drop</div>
+
           <div class="dz-actions">
+            <!-- Gallery -->
             <label class="btn primary">
-              <input id="fileInput" type="file" accept="image/*" hidden />
-              Choose / Camera
+              <input id="galleryInput" type="file" accept="image/*" hidden />
+              Gallery
             </label>
+
+            <!-- Camera -->
+            <label class="btn ghost">
+              <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+              Camera
+            </label>
+
             <button id="clearBtn" class="btn ghost" disabled>Clear</button>
           </div>
         </div>
@@ -73,9 +82,9 @@
       </div>
 
       <div class="grid">
-        <!-- Gauge -->
         <div class="panel gauge-panel">
           <div class="panel-title">Risk score</div>
+
           <div class="gauge">
             <svg viewBox="0 0 120 120" class="ring" aria-label="Risk gauge">
               <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
@@ -86,6 +95,7 @@
               <div class="score-sub">probability</div>
             </div>
           </div>
+
           <div class="mini">
             <div class="mini-row">
               <span>Threshold</span>
@@ -98,20 +108,19 @@
           </div>
         </div>
 
-        <!-- Summary -->
         <div class="panel summary-panel">
           <div class="panel-title">What this means</div>
           <div id="summaryTitle" class="summary-title">—</div>
           <p id="summaryText" class="summary-text">—</p>
-
           <div class="chips" id="chips"></div>
         </div>
 
-        <!-- Recommendations -->
         <div class="panel rec-panel">
           <div class="panel-title">Recommendations</div>
           <ul id="recs" class="recs"></ul>
+
           <div class="divider"></div>
+
           <details class="raw">
             <summary>Show raw JSON</summary>
             <pre id="rawJson" class="code"></pre>
@@ -120,38 +129,20 @@
       </div>
     </section>
 
-    <!-- Safety -->
     <section class="card safety-card">
       <h2>Safety note</h2>
       <p>
-        This app can be wrong. Lighting, focus, angle, and image framing can change predictions.
-        If a spot is new, changing, bleeding, painful, or looks unusual to you—seek professional care.
+        This app can be wrong. Lighting, focus, angle, and framing can change predictions.
+        If a spot is new, changing, bleeding, painful, or looks unusual—seek professional care.
       </p>
-
-      <div class="safety-list">
-        <div class="safety-item">
-          <div class="dot"></div>
-          <div><b>Retake photo</b> in bright indirect light, no flash glare, keep lesion centered.</div>
-        </div>
-        <div class="safety-item">
-          <div class="dot"></div>
-          <div><b>Track changes</b> (size, color, border) and compare over time.</div>
-        </div>
-        <div class="safety-item">
-          <div class="dot"></div>
-          <div><b>When unsure</b>, consult a dermatologist.</div>
-        </div>
-      </div>
-      
     </section>
-    
 
     <footer class="footer">
-      <span>Made for demo purposes</span>
+      <span>demo</span>
     </footer>
   </main>
 
+  <!-- MUST be module for Gradio client import -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
-
