@@ -1,58 +1,56 @@
 import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
 
-// ========================================
+// ============================
 // CONFIG
-// ========================================
+// ============================
 const SPACE_ID = "ElGatito12/ham10000-efficientnet-b0-binary";
 const GRADIO_ENDPOINT = "/predict";
 
-// upload limits / performance
-const MAX_MB = 8;
-const ENABLE_DOWNSCALE = true;
-const DOWNSCALE_MAX_DIM = 1400;
-const DOWNSCALE_JPEG_QUALITY = 0.9;
+const MAX_MB = 12;                 // allow bigger picks; we compress anyway
+const MAX_DIM = 1400;              // downscale longest side to this (mobile-friendly)
+const JPEG_QUALITY = 0.9;          // 0.85–0.95 is a good range
 
-// ========================================
+// ============================
 // DOM
-// ========================================
+// ============================
 const galleryInput = document.getElementById("galleryInput");
-const cameraInput = document.getElementById("cameraInput");
-const dropzone = document.getElementById("dropzone");
-const previewWrap = dropzone.querySelector(".preview-wrap");
-const preview = document.getElementById("preview");
-const fileMeta = document.getElementById("fileMeta");
-const clearBtn = document.getElementById("clearBtn");
+const cameraInput  = document.getElementById("cameraInput");
+const dropzone     = document.getElementById("dropzone");
+const previewWrap  = dropzone.querySelector(".preview-wrap");
+const preview      = document.getElementById("preview");
+const fileMeta     = document.getElementById("fileMeta");
+const clearBtn     = document.getElementById("clearBtn");
 
-const analyzeBtn = document.getElementById("analyzeBtn");
-const analyzeText = document.getElementById("analyzeText");
-const spinner = document.getElementById("spinner");
-const demoBtn = document.getElementById("demoBtn");
+const analyzeBtn   = document.getElementById("analyzeBtn");
+const analyzeText  = document.getElementById("analyzeText");
+const spinner      = document.getElementById("spinner");
+const demoBtn      = document.getElementById("demoBtn");
 
-const resultsCard = document.getElementById("resultsCard");
-const statusPill = document.getElementById("statusPill");
-const scorePct = document.getElementById("scorePct");
+const resultsCard  = document.getElementById("resultsCard");
+const statusPill   = document.getElementById("statusPill");
+const scorePct     = document.getElementById("scorePct");
 const thresholdVal = document.getElementById("thresholdVal");
-const modelLabel = document.getElementById("modelLabel");
+const modelLabel   = document.getElementById("modelLabel");
 const summaryTitle = document.getElementById("summaryTitle");
-const summaryText = document.getElementById("summaryText");
-const chips = document.getElementById("chips");
-const recs = document.getElementById("recs");
-const rawJson = document.getElementById("rawJson");
-const ring = document.querySelector(".ring-fg");
+const summaryText  = document.getElementById("summaryText");
+const chips        = document.getElementById("chips");
+const recs         = document.getElementById("recs");
+const rawJson      = document.getElementById("rawJson");
+const ring         = document.querySelector(".ring-fg");
 
-const themeBtn = document.getElementById("themeBtn");
-const themeIcon = themeBtn.querySelector(".icon");
+const themeBtn     = document.getElementById("themeBtn");
+const themeIcon    = themeBtn.querySelector(".icon");
 
-// ========================================
+// ============================
 // STATE
-// ========================================
-let currentFile = null;
-let uploadFile = null;
+// ============================
+let originalFile = null;     // what user selected
+let uploadFile   = null;     // JPEG we send to HF (converted)
 let clientPromise = null;
 
-// ========================================
+// ============================
 // THEME
-// ========================================
+// ============================
 (function initTheme() {
   const saved = localStorage.getItem("theme");
   if (saved === "light") {
@@ -68,9 +66,9 @@ themeBtn.addEventListener("click", () => {
   themeIcon.textContent = isLight ? "☀" : "☾";
 });
 
-// ========================================
-// HELPERS
-// ========================================
+// ============================
+// UI helpers
+// ============================
 function bytesToMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(2);
 }
@@ -79,18 +77,11 @@ function setLoading(isLoading) {
   spinner.style.display = isLoading ? "inline-block" : "none";
   analyzeText.textContent = isLoading ? "Analyzing…" : "Analyze";
   analyzeBtn.disabled = isLoading || !uploadFile;
-  clearBtn.disabled = isLoading || !currentFile;
-}
-
-function showPreview(file) {
-  preview.src = URL.createObjectURL(file);
-  previewWrap.style.display = "block";
-  fileMeta.textContent = `${file.name} • ${bytesToMB(file.size)} MB`;
-  clearBtn.disabled = false;
+  clearBtn.disabled = isLoading || !originalFile;
 }
 
 function resetAll() {
-  currentFile = null;
+  originalFile = null;
   uploadFile = null;
   galleryInput.value = "";
   cameraInput.value = "";
@@ -98,6 +89,13 @@ function resetAll() {
   clearBtn.disabled = true;
   analyzeBtn.disabled = true;
   resultsCard.hidden = true;
+  fileMeta.textContent = "";
+}
+
+function showPreview(file) {
+  preview.src = URL.createObjectURL(file);
+  previewWrap.style.display = "block";
+  clearBtn.disabled = false;
 }
 
 function setRing(percent) {
@@ -154,55 +152,6 @@ function buildRecommendations(prob, label) {
   ];
 }
 
-// ========================================
-// DOWNSCALE (optional)
-// ========================================
-async function maybeDownscale(file) {
-  if (!ENABLE_DOWNSCALE) return file;
-
-  const img = await new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const im = new Image();
-    im.onload = () => { URL.revokeObjectURL(url); resolve(im); };
-    im.onerror = reject;
-    im.src = url;
-  });
-
-  const w = img.width;
-  const h = img.height;
-  const scale = Math.min(1, DOWNSCALE_MAX_DIM / Math.max(w, h));
-  if (scale === 1) return file;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(w * scale);
-  canvas.height = Math.round(h * scale);
-  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  const blob = await new Promise((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", DOWNSCALE_JPEG_QUALITY);
-  });
-
-  const newName = file.name.replace(/\.\w+$/, "") + "_scaled.jpg";
-  return new File([blob], newName, { type: "image/jpeg" });
-}
-
-// ========================================
-// GRADIO CLIENT
-// ========================================
-function getClient() {
-  if (!clientPromise) clientPromise = Client.connect(SPACE_ID);
-  return clientPromise;
-}
-
-async function callPredict(fileToSend) {
-  const client = await getClient();
-  const result = await client.predict(GRADIO_ENDPOINT, [fileToSend]);
-  return Array.isArray(result?.data) ? result.data[0] : result;
-}
-
-// ========================================
-// RENDER RESULT
-// ========================================
 function paintResult(output) {
   const label = output?.label ?? "unknown";
   const prob = Number(output?.prob_malignant ?? output?.prob ?? 0);
@@ -248,9 +197,86 @@ function paintResult(output) {
   resultsCard.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// ========================================
-// INPUT EVENTS
-// ========================================
+// ============================
+// iPhone-safe conversion: File -> JPEG File
+// ============================
+function dataUrlToBlob(dataUrl) {
+  const [header, b64] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+  const bin = atob(b64);
+  const len = bin.length;
+  const arr = new Uint8Array(len);
+  for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+async function decodeImage(file) {
+  // Prefer createImageBitmap (fast), fallback to <img>
+  if ("createImageBitmap" in window) {
+    try {
+      return await createImageBitmap(file);
+    } catch {}
+  }
+
+  return await new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+async function prepareUploadJpeg(file) {
+  const decoded = await decodeImage(file);
+
+  const w = decoded.width;
+  const h = decoded.height;
+
+  const scale = Math.min(1, MAX_DIM / Math.max(w, h));
+  const outW = Math.max(1, Math.round(w * scale));
+  const outH = Math.max(1, Math.round(h * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(decoded, 0, 0, outW, outH);
+
+  // If decoded is ImageBitmap, close to free memory
+  if (decoded && typeof decoded.close === "function") decoded.close();
+
+  let blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+
+  // Some iOS versions can return null; fallback to dataURL
+  if (!blob) {
+    const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+    blob = dataUrlToBlob(dataUrl);
+  }
+
+  const safeBase = (file.name || "upload").replace(/\.\w+$/, "");
+  const jpegName = `${safeBase}.jpg`;
+  return new File([blob], jpegName, { type: "image/jpeg" });
+}
+
+// ============================
+// Gradio client
+// ============================
+function getClient() {
+  if (!clientPromise) clientPromise = Client.connect(SPACE_ID);
+  return clientPromise;
+}
+
+async function callPredict(fileToSend) {
+  const client = await getClient();
+  const result = await client.predict(GRADIO_ENDPOINT, [fileToSend]);
+  return Array.isArray(result?.data) ? result.data[0] : result;
+}
+
+// ============================
+// Handlers
+// ============================
 async function handleFile(file) {
   if (!file) return;
 
@@ -259,16 +285,21 @@ async function handleFile(file) {
     return;
   }
 
-  currentFile = file;
+  originalFile = file;
   showPreview(file);
-
   setLoading(true);
+
   try {
-    uploadFile = await maybeDownscale(file);
+    uploadFile = await prepareUploadJpeg(file);
+
+    fileMeta.textContent =
+      `Selected: ${file.name} (${bytesToMB(file.size)} MB) • ` +
+      `Uploading: ${uploadFile.name} (${bytesToMB(uploadFile.size)} MB, JPEG)`;
+
     analyzeBtn.disabled = false;
   } catch (e) {
     console.error(e);
-    alert("Could not process that image. Try another one.");
+    alert("Could not read/convert that image on this device. Try another photo.");
     resetAll();
   } finally {
     setLoading(false);
@@ -278,6 +309,7 @@ async function handleFile(file) {
 galleryInput.addEventListener("change", (e) => handleFile(e.target.files?.[0]));
 cameraInput.addEventListener("change", (e) => handleFile(e.target.files?.[0]));
 
+// Desktop drag-drop
 dropzone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.style.borderColor = "rgba(124,92,255,.65)";
@@ -291,9 +323,9 @@ dropzone.addEventListener("drop", (e) => {
   handleFile(e.dataTransfer.files?.[0]);
 });
 
+// Clicking empty zone opens Gallery by default
 dropzone.addEventListener("click", (e) => {
   if (e.target.closest(".btn")) return;
-  // default to gallery picker
   galleryInput.click();
 });
 dropzone.addEventListener("keydown", (e) => {
@@ -305,9 +337,6 @@ dropzone.addEventListener("keydown", (e) => {
 
 clearBtn.addEventListener("click", () => resetAll());
 
-// ========================================
-// ACTIONS
-// ========================================
 analyzeBtn.addEventListener("click", async () => {
   if (!uploadFile) return;
 
@@ -318,11 +347,10 @@ analyzeBtn.addEventListener("click", async () => {
   } catch (err) {
     console.error(err);
     alert(
-      "Could not reach the prediction API.\n\n" +
+      "Prediction failed.\n\n" +
       "Common causes:\n" +
       "• Space is sleeping (try again in ~10–30s)\n" +
-      "• Space is private\n" +
-      "• Temporary HF outage\n\n" +
+      "• Network/cellular hiccup\n\n" +
       `Details: ${err?.message ?? err}`
     );
   } finally {
@@ -339,7 +367,7 @@ demoBtn.addEventListener("click", () => {
   });
 });
 
-// Optional warmup
+// Warm up connection (optional)
 (async function warmup() {
   try { await getClient(); } catch {}
 })();
